@@ -75,6 +75,8 @@ Item {
   property int trackedFiles: 0
   property string lastError: ""
   property var activity: []
+  property int startupRetryCount: 0
+  property bool startupRetryScheduled: false
 
   readonly property bool active: running && !paused
   readonly property bool busy: loginProcess.running
@@ -131,6 +133,8 @@ Item {
       return
     }
     if (daemonProcess.running) return
+    startupRetryScheduled = false
+    startupRetryCount = 0
     lastError = ""
     daemonProcess.command = [
       "python3", daemonPath,
@@ -141,6 +145,14 @@ Item {
       "--state-file", stateFile
     ]
     daemonProcess.running = true
+  }
+
+  function scheduleStartupRetry() {
+    if (!ready || daemonProcess.running || startupRetryScheduled) return
+    startupRetryScheduled = true
+    startupRetryCount += 1
+    lastError = "protondrive-sync failed to start; retrying in 5 seconds (" + startupRetryCount + "/3)"
+    startRetryTimer.start()
   }
 
   property bool _intentionalStop: false
@@ -270,6 +282,22 @@ Item {
     }
   }
 
+  Timer {
+    id: startRetryTimer
+    interval: 5000
+    repeat: false
+    onTriggered: {
+      if (!root.ready || root.daemonProcess.running) return
+      if (root.startupRetryCount >= 3) {
+        root.startupRetryScheduled = false
+        root.lastError = "protondrive-sync could not start after several attempts. Check the CLI, auth, and folder settings."
+        return
+      }
+      root.startupRetryScheduled = false
+      root.start()
+    }
+  }
+
   Process {
     id: daemonProcess
     running: false
@@ -290,7 +318,11 @@ Item {
       // signal exit code. That's expected, not a crash -- only report an
       // error for an exit we didn't ask for.
       if (!root._intentionalStop && exitCode !== 0) {
-        root.lastError = "protondrive-sync exited unexpectedly (code " + exitCode + ")"
+        if (root.ready && !root.startupRetryScheduled) {
+          root.scheduleStartupRetry()
+        } else {
+          root.lastError = "protondrive-sync exited unexpectedly (code " + exitCode + ")"
+        }
       }
       root._intentionalStop = false
       if (root._pendingRestart) {
