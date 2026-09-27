@@ -307,9 +307,9 @@ Panel {
 
           Text {
             textFormat: Text.PlainText
-            visible: sync.lastError !== ""
+            visible: sync.lastError !== "" || (!sync.running && sync.startupReason !== "")
             width: parent.width
-            text: sync.lastError
+            text: sync.lastError !== "" ? sync.lastError : sync.startupReason
             color: root.urgent
             font.family: root.fontFamily
             font.pixelSize: Style.font.bodySmall

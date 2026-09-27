@@ -62,6 +62,12 @@ Item {
   property bool authenticated: false
   property bool checked: false
   readonly property bool ready: cliInstalled && authenticated && configured
+  readonly property string startupReason:
+    !checked ? "Checking Proton Drive setup…" :
+    !cliInstalled ? "proton-drive CLI is not installed." :
+    !authenticated ? "Not logged in to Proton Drive. Click the setup action above to sign in." :
+    !configured ? "Set a local folder and Proton Drive folder in the settings." :
+    ""
 
   property bool running: false
   property bool paused: false
@@ -120,7 +126,12 @@ Item {
   }
 
   function start() {
-    if (!ready || daemonProcess.running) return
+    if (!ready) {
+      if (startupReason !== "") lastError = startupReason
+      return
+    }
+    if (daemonProcess.running) return
+    lastError = ""
     daemonProcess.command = [
       "python3", daemonPath,
       "--local", localFolder,
@@ -232,7 +243,11 @@ Item {
         root.inotifyInstalled = lines[1] === "yes"
         root.authenticated = lines[2] === "yes"
         root.checked = true
-        if (root.ready && !daemonProcess.running) root.start()
+        if (!root.ready) {
+          root.lastError = root.startupReason
+        } else if (!daemonProcess.running) {
+          root.start()
+        }
       }
     }
   }
